@@ -25,13 +25,15 @@ function generateCacheKey(request: Request): string {
 }
 
 export function createDedupeFetch(originalFetch: typeof fetch) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- url is the cache key
-  const getCacheEntries = React.cache((url: string): Array<any> => [])
+  const getCacheEntries = React.cache(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- url is the cache key
+    (url: string): Record<string, Promise<Response>> => ({})
+  )
 
   return function dedupeFetch(
     resource: URL | RequestInfo,
     options?: RequestInit
-  ) {
+  ): Promise<Response> {
     if (options && options.signal) {
       // If we're passed a signal, then we assume that
       // someone else controls the lifetime of this object and opts out of
@@ -74,29 +76,30 @@ export function createDedupeFetch(originalFetch: typeof fetch) {
     }
 
     const cacheEntries = getCacheEntries(url)
-    let match
-    if (cacheEntries.length === 0) {
-      // We pass the original arguments here in case normalizing the Request
-      // doesn't include all the options in this environment.
-      match = originalFetch(resource, options)
-      cacheEntries.push(cacheKey, match)
-    } else {
-      // We use an array as the inner data structure since it's lighter and
-      // we typically only expect to see one or two entries here.
-      for (let i = 0, l = cacheEntries.length; i < l; i += 2) {
-        const key = cacheEntries[i]
-        const value = cacheEntries[i + 1]
-        if (key === cacheKey) {
-          match = value
-          // I would've preferred a labelled break but lint says no.
-          return match.then((response: Response) => response.clone())
-        }
-      }
-      match = originalFetch(resource, options)
-      cacheEntries.push(cacheKey, match)
+
+    // Check if there is a cached entry for the given cache key. If there is, we
+    // return the cached response (cloned). This will keep the cached promise to
+    // remain unused and can be cloned on future requests.
+    let promise = cacheEntries[cacheKey]
+    if (promise) {
+      return promise.then((response) => response.clone())
     }
-    // We clone the response so that each time you call this you get a new read
-    // of the body so that it can be read multiple times.
-    return match.then((response) => response.clone())
+
+    // We pass the original arguments here in case normalizing the Request
+    // doesn't include all the options in this environment.
+    const original = originalFetch(resource, options)
+
+    // We then clone the original response. We store this in the cache so that
+    // any future requests will be using this cloned response.
+    const cloned = original.then((response) => response.clone())
+    cacheEntries[cacheKey] = cloned
+
+    // Attach an empty catch here so we don't get a "unhandled promise
+    // rejection" warning
+    cloned.catch(() => {})
+
+    // Return the promise so that the caller can await it. We pass back the
+    // original promise.
+    return original
   }
 }
