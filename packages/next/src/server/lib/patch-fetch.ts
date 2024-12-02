@@ -933,17 +933,11 @@ export function createPatchedFetcher(
 
           pendingRevalidate = pendingResponse
             .then(async (response) => {
-              // Clone the response here. It'll run first because we attached
-              // the resolve before we returned below. We have to clone it
-              // because the original response is going to be consumed by
-              // at a later point in time.
-              const clonedResponse = response.clone()
-
               return {
-                body: await clonedResponse.arrayBuffer(),
-                headers: clonedResponse.headers,
-                status: clonedResponse.status,
-                statusText: clonedResponse.statusText,
+                body: await response.arrayBuffer(),
+                headers: response.headers,
+                status: response.status,
+                statusText: response.statusText,
               }
             })
             .finally(() => {
@@ -962,7 +956,7 @@ export function createPatchedFetcher(
 
           workStore.pendingRevalidates[pendingRevalidateKey] = pendingRevalidate
 
-          return pendingResponse
+          return pendingResponse.then((response) => response.clone())
         } else {
           return doOriginalFetch(false, cacheReasonOverride)
         }

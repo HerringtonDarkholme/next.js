@@ -88,18 +88,12 @@ export function createDedupeFetch(originalFetch: typeof fetch) {
     // We pass the original arguments here in case normalizing the Request
     // doesn't include all the options in this environment.
     const original = originalFetch(resource, options)
-
-    // We then clone the original response. We store this in the cache so that
-    // any future requests will be using this cloned response.
-    const cloned = original.then((response) => response.clone())
-    cacheEntries[cacheKey] = cloned
+    cacheEntries[cacheKey] = original
 
     // Attach an empty catch here so we don't get a "unhandled promise
     // rejection" warning
-    cloned.catch(() => {})
+    original.catch(() => {})
 
-    // Return the promise so that the caller can await it. We pass back the
-    // original promise.
-    return original
+    return original.then((response) => response.clone())
   }
 }
